@@ -158,6 +158,49 @@ def spilled_energy_torch(
     return delta, E_margin, E
 
 
+def compute_conditional_entropy(
+    logits: torch.Tensor, beta: float = 1.0
+) -> torch.Tensor:
+    """
+    Compute conditional entropy H_Q(X_{i+1} | context) from logits.
+
+    H_Q = -sum_k Q(k) * log Q(k)  where Q = softmax(beta * logits)
+
+    Args:
+        logits: Tensor of shape (..., vocab_size).
+        beta: Inverse temperature scaling factor (default 1.0).
+
+    Returns:
+        Tensor of shape (...) — conditional entropy at each position (nats).
+        Values range from 0 (deterministic) to log(V) (uniform).
+    """
+    log_probs = torch.log_softmax(beta * logits, dim=-1)
+    probs = torch.exp(log_probs)
+    entropy = -torch.sum(probs * log_probs, dim=-1)
+    return entropy
+
+
+def compute_surprise(
+    logits: torch.Tensor, token_ids: torch.Tensor, beta: float = 1.0
+) -> torch.Tensor:
+    """
+    Compute pointwise surprise s(x_i) = -log p(x_i | context).
+
+    Args:
+        logits: Tensor of shape (..., vocab_size).
+        token_ids: Tensor of shape (...) — the chosen token IDs.
+        beta: Inverse temperature (default 1.0).
+
+    Returns:
+        Tensor of shape (...) — surprise values in nats. Always >= 0.
+    """
+    log_probs = torch.log_softmax(beta * logits, dim=-1)
+    token_log_probs = torch.gather(
+        log_probs, dim=-1, index=token_ids.unsqueeze(-1)
+    ).squeeze(-1)
+    return -token_log_probs
+
+
 def spilled_energy_last_token(
     logits: List[List[float]], ids: List[int], beta: float = 1.0
 ) -> tuple:
